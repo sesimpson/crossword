@@ -11,24 +11,26 @@ family-crossword generate \
   --timeout-minutes 20
 ```
 
-The generator is designed for GitHub Actions and a downstream family website deploy. It does not automate Crosserville; Crosserville can still be used manually to review imported `.puz` files.
+The generator is designed for GitHub Actions and a downstream family website deploy. It can also use Crosserville as a browser-backed autofill engine.
 
-## Crosswyrd Backend
+## Crosserville Backend
 
-The default backend is local. To use Crosswyrd as a black-box autofill engine:
+The default backend is local. To use Crosserville as a black-box autofill engine:
 
 ```bash
+CROSSERVILLE_EMAIL="you@example.com" \
+CROSSERVILLE_PASSWORD="..." \
 family-crossword generate \
-  --backend crosswyrd \
+  --backend crosserville \
   --input examples/weekly_context.yml \
-  --out dist/crosswyrd \
+  --out dist/crosserville \
   --sizes 13,11,9 \
   --attempts 12 \
   --timeout-minutes 8 \
   --no-ai-clues
 ```
 
-This backend opens [Crosswyrd](https://crosswyrd.app/builder), imports exact-size blank `.puz` templates, adds family entries to the Word Bank, places as many valid family words as it can, runs Auto-Fill, and retries with different templates/placement budgets. It backs off from many forced family words to fewer forced words so weekly runs can still publish a filled puzzle.
+This backend opens [Crosserville](https://www.crosserville.com/builder), signs in when needed, imports exact-size `.puz` templates with compatible family answers pre-placed, runs Find Fill, accepts the fill result, exports a solved `.puz`, and retries with different templates and family-word placements. The selected fill is converted back into the same site-ready JSON, `.ipuz`, and `.puz` artifacts as the local backend.
 
 Install the browser runtime before using it locally or in CI:
 
@@ -91,4 +93,5 @@ If either variable is missing, generation still succeeds with deterministic fall
 - `CROSSWORD_SIZES`: default `13,11,9`
 - `CROSSWORD_ATTEMPTS`: default `2000`
 - `CROSSWORD_TIMEOUT_MINUTES`: default `20`
-- `CROSSWORD_BACKEND`: default `local`, set to `crosswyrd` for browser-backed generation
+- `CROSSWORD_BACKEND`: default `local`, set to `crosserville` for browser-backed generation
+- `CROSSERVILLE_EMAIL` / `CROSSERVILLE_PASSWORD`: required when using the Crosserville backend

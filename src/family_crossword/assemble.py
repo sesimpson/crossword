@@ -11,6 +11,7 @@ def puzzle_from_grid_rows(
     *,
     metadata: dict[str, Any],
     family_candidates: list[Candidate],
+    clues: dict[tuple[int, str], str] | None = None,
 ) -> FilledPuzzle:
     blocks = [[cell == BLOCK for cell in row] for row in rows]
     numbers = assign_numbers(blocks)
@@ -28,8 +29,8 @@ def puzzle_from_grid_rows(
                 col=slot.col,
                 direction=slot.direction,
                 answer=answer,
-                clue="",
-                source=candidate.source if candidate else "crosswyrd",
+                clue=(clues or {}).get((numbers.get((slot.row, slot.col), 0), slot.direction), ""),
+                source=candidate.source if candidate else "crosserville",
                 is_family=candidate is not None,
                 clue_hint=candidate.clue_hint if candidate else "",
                 tags=candidate.tags if candidate else (),

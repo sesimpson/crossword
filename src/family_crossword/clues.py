@@ -7,13 +7,22 @@ from typing import Any
 from .model import FilledPuzzle
 
 
-def add_clues(puzzle: FilledPuzzle, *, model: str | None = None, use_ai: bool = True) -> list[str]:
+def add_clues(
+    puzzle: FilledPuzzle,
+    *,
+    model: str | None = None,
+    use_ai: bool = True,
+    family_only: bool = False,
+    preserve_existing: bool = False,
+) -> list[str]:
     warnings: list[str] = []
+    target_entries = [entry for entry in puzzle.entries if not family_only or entry.is_family]
     if use_ai and os.getenv("OPENAI_API_KEY") and model:
         try:
-            clues = _generate_openai_clues(puzzle, model=model)
-            for entry in puzzle.entries:
-                entry.clue = clues.get(_entry_key(entry.number, entry.direction), fallback_clue(entry.answer, entry.clue_hint, entry.is_family))
+            clues = _generate_openai_clues(puzzle, model=model, family_only=family_only)
+            for entry in target_entries:
+                existing = entry.clue if preserve_existing else ""
+                entry.clue = clues.get(_entry_key(entry.number, entry.direction), existing or fallback_clue(entry.answer, entry.clue_hint, entry.is_family))
             return warnings
         except Exception as exc:
             warnings.append(f"AI clue generation failed: {exc}")
@@ -21,7 +30,9 @@ def add_clues(puzzle: FilledPuzzle, *, model: str | None = None, use_ai: bool = 
     if use_ai and os.getenv("OPENAI_API_KEY") and not model:
         warnings.append("OPENAI_API_KEY is set but OPENAI_MODEL/--model is missing; using fallback clues.")
 
-    for entry in puzzle.entries:
+    for entry in target_entries:
+        if preserve_existing and entry.clue:
+            continue
         entry.clue = fallback_clue(entry.answer, entry.clue_hint, entry.is_family)
     return warnings
 
@@ -34,7 +45,7 @@ def fallback_clue(answer: str, clue_hint: str = "", is_family: bool = False) -> 
     return f"Common crossword entry: {answer.title()}"
 
 
-def _generate_openai_clues(puzzle: FilledPuzzle, *, model: str) -> dict[str, str]:
+def _generate_openai_clues(puzzle: FilledPuzzle, *, model: str, family_only: bool = False) -> dict[str, str]:
     from openai import OpenAI
 
     payload = {
@@ -52,6 +63,7 @@ def _generate_openai_clues(puzzle: FilledPuzzle, *, model: str) -> dict[str, str
                 "tags": list(entry.tags),
             }
             for entry in puzzle.entries
+            if not family_only or entry.is_family
         ],
     }
     schema: dict[str, Any] = {

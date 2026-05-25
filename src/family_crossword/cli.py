@@ -4,7 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
-from .crosswyrd import generate_with_crosswyrd_from_file
+from .crosserville import generate_with_crosserville_from_file
 from .generator import generate_from_file
 
 
@@ -21,8 +21,8 @@ def main(argv: list[str] | None = None) -> None:
     generate.add_argument("--seed", type=int, default=None, help="Optional deterministic random seed.")
     generate.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="OpenAI model for clue generation.")
     generate.add_argument("--no-ai-clues", action="store_true", help="Use deterministic fallback clues only.")
-    generate.add_argument("--backend", choices=["local", "crosswyrd"], default="local", help="Generation backend.")
-    generate.add_argument("--show-browser", action="store_true", help="Show the Crosswyrd browser while generating.")
+    generate.add_argument("--backend", choices=["local", "crosserville"], default="local", help="Generation backend.")
+    generate.add_argument("--show-browser", action="store_true", help="Show the Crosserville browser while generating.")
 
     args = parser.parse_args(argv)
     if args.command == "generate":
@@ -35,8 +35,8 @@ def main(argv: list[str] | None = None) -> None:
             "model": args.model,
             "use_ai_clues": not args.no_ai_clues,
         }
-        if args.backend == "crosswyrd":
-            puzzle = generate_with_crosswyrd_from_file(
+        if args.backend == "crosserville":
+            puzzle = generate_with_crosserville_from_file(
                 Path(args.input),
                 Path(args.out),
                 headless=not args.show_browser,
