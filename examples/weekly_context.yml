@@ -1,0 +1,32 @@
+week_of: "2026-05-24"
+title: "Family Weekly Crossword"
+people:
+  - answer: "Campbell"
+    clue_hint: "Family surname"
+    priority: 10
+  - answer: "Aunt June"
+    clue_hint: "Relative visiting this week"
+    priority: 8
+places:
+  - answer: "Lake House"
+    clue_hint: "Favorite summer gathering spot"
+    priority: 9
+events:
+  - answer: "Picnic"
+    clue_hint: "Outdoor meal on the calendar"
+    priority: 8
+  - answer: "Piano Recital"
+    clue_hint: "Musical milestone this week"
+    priority: 7
+inside_jokes:
+  - answer: "Snack Drawer"
+    clue_hint: "Where the emergency treats live"
+    priority: 7
+books:
+  - title: "Charlotte"
+    clue_hint: "Library hold name to remember"
+    priority: 5
+news_items:
+  - answer: "Garden"
+    clue_hint: "Weekend project with seedlings"
+    priority: 6
