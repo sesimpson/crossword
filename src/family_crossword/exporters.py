@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -58,13 +59,32 @@ def _write_puz(puzzle: FilledPuzzle, path: Path) -> None:
     import puz
 
     puz_file = puz.Puzzle()
-    puz_file.title = str(puzzle.metadata.get("title", "Family Crossword"))
-    puz_file.author = str(puzzle.metadata.get("author", "family-crossword"))
-    puz_file.copyright = str(puzzle.metadata.get("copyright", ""))
+    puz_file.title = _puz_text(puzzle.metadata.get("title", "Family Crossword"))
+    puz_file.author = _puz_text(puzzle.metadata.get("author", "family-crossword"))
+    puz_file.copyright = _puz_text(puzzle.metadata.get("copyright", ""))
     puz_file.width = puzzle.size
     puz_file.height = puzzle.size
     puz_file.solution = "".join(cell if cell != BLOCK else "." for row in puzzle.grid for cell in row)
     puz_file.fill = "".join("-" if cell != BLOCK else "." for row in puzzle.grid for cell in row)
-    puz_file.clues = [entry.clue for entry in sorted(puzzle.entries, key=lambda item: (item.number, item.direction == "down"))]
-    puz_file.notes = json.dumps({"week_of": puzzle.metadata.get("week_of"), "family_count": puzzle.score_report.get("family_count")})
+    puz_file.clues = [_puz_text(entry.clue) for entry in sorted(puzzle.entries, key=lambda item: (item.number, item.direction == "down"))]
+    puz_file.notes = _puz_text(json.dumps({"week_of": puzzle.metadata.get("week_of"), "family_count": puzzle.score_report.get("family_count")}))
     puz_file.save(str(path))
+
+
+def _puz_text(value: Any) -> str:
+    text = str(value)
+    text = text.translate(
+        str.maketrans(
+            {
+                "\u2013": "-",
+                "\u2014": "-",
+                "\u2018": "'",
+                "\u2019": "'",
+                "\u201c": '"',
+                "\u201d": '"',
+                "\u2026": "...",
+                "\u00a0": " ",
+            }
+        )
+    )
+    return unicodedata.normalize("NFKD", text).encode("latin-1", "replace").decode("latin-1")
