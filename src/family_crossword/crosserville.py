@@ -192,7 +192,9 @@ def _run_crosserville_attempt(
         _import_template(page, template_path)
         _run_crosserville_fill(page, min(deadline, time.monotonic() + MAX_FILL_SECONDS_PER_PLACEMENT))
         final_rows, clues = _export_puz(page)
-        clues.update({key: value for key, value in _scrape_visible_clues(page, final_rows).items() if value})
+        crosserville_clues = _scrape_lookup_clues(page, final_rows)
+        crosserville_clues.update({key: value for key, value in _scrape_visible_clues(page, final_rows).items() if value})
+        clues.update({key: value for key, value in crosserville_clues.items() if value})
         return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=sum(row.count(".") for row in final_rows), rows=final_rows, clues=clues)
     except Exception as exc:
         return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=size * size, rows=[], error=str(exc))
@@ -468,6 +470,85 @@ def _current_visible_clue(page: Any, number: int, direction: str) -> str:
         if len(line) > 2:
             return line
     return ""
+
+
+def _scrape_lookup_clues(page: Any, rows: list[str]) -> dict[tuple[int, str], str]:
+    entries = [
+        {"number": number, "direction": direction, "answer": answer}
+        for number, direction, answer in _answers_by_entry(rows)
+        if answer
+    ]
+    if not entries:
+        return {}
+    try:
+        raw = page.evaluate(
+            """async entries => {
+                const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+                const out = {};
+                for (const entry of entries) {
+                    try {
+                        const response = await fetch(`/api/clues/${encodeURIComponent(entry.answer)}/`, {credentials: 'include'});
+                        if (!response.ok) {
+                            await sleep(40);
+                            continue;
+                        }
+                        const payload = await response.json();
+                        const body = payload && (payload.response || payload);
+                        const candidates = [];
+                        if (Array.isArray(body?.myClues)) {
+                            for (const item of body.myClues) candidates.push(item?.clue);
+                        }
+                        if (Array.isArray(body?.clues)) {
+                            for (const item of body.clues) candidates.push(item?.clue);
+                        }
+                        const clue = candidates.find(value => typeof value === 'string' && value.trim().length > 2);
+                        if (clue) out[`${entry.number}-${entry.direction}`] = clue.trim();
+                    } catch (error) {
+                    }
+                    await sleep(40);
+                }
+                return out;
+            }""",
+            entries,
+        )
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    mapped: dict[tuple[int, str], str] = {}
+    for key, value in raw.items():
+        try:
+            number_text, direction = str(key).split("-", 1)
+            number = int(number_text)
+        except ValueError:
+            continue
+        clue = _clean_crosserville_clue(str(value))
+        if clue:
+            mapped[(number, direction)] = clue
+    return mapped
+
+
+def _answers_by_entry(rows: list[str]) -> list[tuple[int, str, str]]:
+    entries: list[tuple[int, str, str]] = []
+    for number, direction, row, col in _numbered_slots(rows):
+        letters: list[str] = []
+        row_delta, col_delta = (0, 1) if direction == "across" else (1, 0)
+        next_row, next_col = row, col
+        while next_row < len(rows) and next_col < len(rows[next_row]) and rows[next_row][next_col] != BLOCK:
+            letters.append(rows[next_row][next_col])
+            next_row += row_delta
+            next_col += col_delta
+        entries.append((number, direction, "".join(letters)))
+    return entries
+
+
+def _clean_crosserville_clue(clue: str) -> str:
+    clue = re.sub(r"\s+", " ", clue).strip()
+    if not clue:
+        return ""
+    if clue.lower() in {"clue pending", "clue unavailable"}:
+        return ""
+    return clue
 
 
 def _numbered_slots(rows: list[str]) -> list[tuple[int, str, int, int]]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from family_crossword.crosserville import _current_visible_clue, _numbered_slots, _place_family_words
+from family_crossword.crosserville import _answers_by_entry, _current_visible_clue, _numbered_slots, _place_family_words
 from family_crossword.model import Candidate
 
 
@@ -52,3 +52,18 @@ def test_numbered_slots_and_visible_clue_parser() -> None:
             return FakeLocator()
 
     assert _current_visible_clue(FakePage(), 30, "across") == "Fasten, as a ship's rope"
+
+
+def test_answers_by_entry_matches_numbered_slots() -> None:
+    rows = [
+        "DOG",
+        "ARE",
+        "TEN",
+    ]
+
+    assert _answers_by_entry(rows)[:4] == [
+        (1, "across", "DOG"),
+        (1, "down", "DAT"),
+        (2, "down", "ORE"),
+        (3, "down", "GEN"),
+    ]
