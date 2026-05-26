@@ -42,7 +42,7 @@ def fallback_clue(answer: str, clue_hint: str = "", is_family: bool = False) -> 
         return clue_hint
     if is_family:
         return "Family-themed answer"
-    return f"Common crossword entry: {answer.title()}"
+    return "Clue pending"
 
 
 def _generate_openai_clues(puzzle: FilledPuzzle, *, model: str, family_only: bool = False) -> dict[str, str]:
