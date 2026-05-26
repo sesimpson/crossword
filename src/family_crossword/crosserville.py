@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import tempfile
 import time
 from dataclasses import dataclass
@@ -191,6 +192,7 @@ def _run_crosserville_attempt(
         _import_template(page, template_path)
         _run_crosserville_fill(page, min(deadline, time.monotonic() + MAX_FILL_SECONDS_PER_PLACEMENT))
         final_rows, clues = _export_puz(page)
+        clues.update({key: value for key, value in _scrape_visible_clues(page, final_rows).items() if value})
         return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=sum(row.count(".") for row in final_rows), rows=final_rows, clues=clues)
     except Exception as exc:
         return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=size * size, rows=[], error=str(exc))
@@ -387,6 +389,105 @@ def _export_puz(page: Any) -> tuple[list[str], dict[tuple[int, str], str]]:
         row = puzzle.solution[row_index * puzzle.width : (row_index + 1) * puzzle.width]
         rows.append("".join(_puz_cell_to_grid_cell(cell) for cell in row))
     return rows, _puz_clues_by_entry(rows, puzzle.clues)
+
+
+def _scrape_visible_clues(page: Any, rows: list[str]) -> dict[tuple[int, str], str]:
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(150)
+    except Exception:
+        pass
+    grid_box = _crosserville_grid_box(page, len(rows))
+    if not grid_box:
+        return {}
+    mapped: dict[tuple[int, str], str] = {}
+    for number, direction, row, col in _numbered_slots(rows):
+        click_count = 2 if direction == "down" else 1
+        for _ in range(click_count):
+            page.mouse.click(
+                grid_box["x"] + (col + 0.5) * grid_box["cell"],
+                grid_box["y"] + (row + 0.5) * grid_box["cell"],
+            )
+            page.wait_for_timeout(120)
+        clue = _current_visible_clue(page, number, direction)
+        if clue:
+            mapped[(number, direction)] = clue
+    return mapped
+
+
+def _crosserville_grid_box(page: Any, size: int) -> dict[str, float] | None:
+    selectors = ("#id_grid", "#id_crosswordGrid", "#id_gridSvg", ".crossword-grid", ".grid")
+    for selector in selectors:
+        try:
+            box = page.locator(selector).first.bounding_box(timeout=500)
+        except Exception:
+            box = None
+        if box and box["width"] > 120 and box["height"] > 120:
+            edge = min(box["width"], box["height"])
+            return {"x": box["x"], "y": box["y"], "cell": edge / size}
+    try:
+        box = page.evaluate(
+            """size => {
+                const candidates = [...document.querySelectorAll('body *')]
+                  .map(el => {
+                    const r = el.getBoundingClientRect();
+                    return {x:r.x, y:r.y, width:r.width, height:r.height};
+                  })
+                  .filter(r => r.width >= 240 && r.height >= 240 && r.x < 850 && r.y < 450)
+                  .filter(r => Math.abs(r.width - r.height) <= Math.max(20, r.width * 0.18))
+                  .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0];
+                if (!candidates) return null;
+                const edge = Math.min(candidates.width, candidates.height);
+                return {x:candidates.x, y:candidates.y, cell: edge / size};
+            }""",
+            size,
+        )
+    except Exception:
+        return None
+    return box if isinstance(box, dict) else None
+
+
+def _current_visible_clue(page: Any, number: int, direction: str) -> str:
+    label = "Across" if direction == "across" else "Down"
+    try:
+        text = page.locator("body").inner_text(timeout=1_000)
+    except Exception:
+        return ""
+    pattern = rf"{number}-{label}\s+\(\d+\)(.*?)(?:\n\s*(?:Slot Options|Slot Filter|Global Filters|Auto Fill|Find Slot Options|Exclude From)|$)"
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    if not match:
+        return ""
+    lines = [line.strip() for line in match.group(1).splitlines() if line.strip()]
+    for line in lines:
+        if re.fullmatch(r"[A-Z ]+", line):
+            continue
+        if re.fullmatch(r"\(\d+\)", line):
+            continue
+        if line.startswith("Exclude "):
+            continue
+        if len(line) > 2:
+            return line
+    return ""
+
+
+def _numbered_slots(rows: list[str]) -> list[tuple[int, str, int, int]]:
+    blocks = [[cell == BLOCK for cell in row] for row in rows]
+    slots: list[tuple[int, str, int, int]] = []
+    number = 1
+    size = len(rows)
+    for row in range(size):
+        for col in range(size):
+            if blocks[row][col]:
+                continue
+            starts_across = (col == 0 or blocks[row][col - 1]) and col + 2 < size and not blocks[row][col + 1] and not blocks[row][col + 2]
+            starts_down = (row == 0 or blocks[row - 1][col]) and row + 2 < size and not blocks[row + 1][col] and not blocks[row + 2][col]
+            if starts_across:
+                slots.append((number, "across", row, col))
+            if starts_down:
+                slots.append((number, "down", row, col))
+            if starts_across or starts_down:
+                number += 1
+    return slots
 
 
 def _puz_clues_by_entry(rows: list[str], clues: list[str]) -> dict[tuple[int, str], str]:
