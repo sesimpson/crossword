@@ -152,7 +152,7 @@ def generate_with_crosserville(
     if best is None:
         raise RuntimeError("Crosserville could not produce a complete puzzle within the configured attempts/time.")
 
-    warnings.extend(add_clues(best, model=model, use_ai=use_ai_clues, family_only=True, preserve_existing=True))
+    warnings.extend(add_clues(best, model=model, use_ai=use_ai_clues, family_only=False, preserve_existing=True))
     report = {
         "status": "ok",
         "backend": "crosserville",

@@ -21,7 +21,7 @@ def add_clues(
         try:
             clues = _generate_openai_clues(puzzle, model=model, family_only=family_only)
             for entry in target_entries:
-                existing = entry.clue if preserve_existing else ""
+                existing = entry.clue.strip() if preserve_existing else ""
                 entry.clue = clues.get(_entry_key(entry.number, entry.direction), existing or fallback_clue(entry.answer, entry.clue_hint, entry.is_family))
             return warnings
         except Exception as exc:
@@ -31,7 +31,7 @@ def add_clues(
         warnings.append("OPENAI_API_KEY is set but OPENAI_MODEL/--model is missing; using fallback clues.")
 
     for entry in target_entries:
-        if preserve_existing and entry.clue:
+        if preserve_existing and entry.clue.strip():
             continue
         entry.clue = fallback_clue(entry.answer, entry.clue_hint, entry.is_family)
     return warnings
