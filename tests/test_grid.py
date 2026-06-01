@@ -1,4 +1,4 @@
-from family_crossword.grid import assign_numbers, find_slots, is_rotationally_symmetric, is_valid_pattern
+from family_crossword.grid import TEMPLATES, assign_numbers, find_slots, is_rotationally_symmetric, is_valid_pattern
 
 
 def test_all_white_grid_is_valid_checked_and_numbered() -> None:
@@ -18,3 +18,10 @@ def test_two_letter_slot_is_invalid() -> None:
     ]
 
     assert not is_valid_pattern(blocks)
+
+
+def test_crosserville_fifteen_template_is_valid() -> None:
+    blocks = [[cell == "#" for cell in row] for row in TEMPLATES[15]]
+
+    assert len(blocks) == 15
+    assert is_valid_pattern(blocks)

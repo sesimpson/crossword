@@ -19,3 +19,22 @@ def test_normalize_candidates_accepts_strings_and_objects() -> None:
     assert candidates[0].priority == 9
     assert candidates[0].tags == ("visit",)
     assert rejected[0]["reason"].startswith("answer shorter")
+
+
+def test_normalize_candidates_derives_words_from_too_long_phrases() -> None:
+    candidates, rejected = normalize_candidates(
+        {
+            "books": [
+                {
+                    "title": "The Very Busy Spider",
+                    "clue_hint": "Nico's overdue favorite",
+                    "priority": 9,
+                }
+            ]
+        },
+        max_length=10,
+    )
+
+    assert [candidate.answer for candidate in candidates] == ["VERY", "BUSY", "SPIDER"]
+    assert candidates[-1].clue_hint == "Nico's overdue favorite"
+    assert rejected[0]["reason"] == "answer longer than max grid size 10"

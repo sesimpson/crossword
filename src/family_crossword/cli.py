@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> None:
     generate = subparsers.add_parser("generate", help="Generate weekly family crossword artifacts.")
     generate.add_argument("--input", required=True, help="Normalized weekly YAML/JSON context file.")
     generate.add_argument("--out", required=True, help="Output directory for puzzle artifacts.")
-    generate.add_argument("--sizes", default="13,11,9", help="Comma-separated grid sizes to try, in preference order.")
+    generate.add_argument("--sizes", default="15,13,11,9", help="Comma-separated grid sizes to try, in preference order.")
     generate.add_argument("--attempts", type=int, default=2000, help="Total search attempts split across sizes.")
     generate.add_argument("--timeout-minutes", type=float, default=20, help="Maximum generation time.")
     generate.add_argument("--seed", type=int, default=None, help="Optional deterministic random seed.")

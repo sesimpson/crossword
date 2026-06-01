@@ -14,10 +14,34 @@ DEFAULT_CATEGORIES = (
     "people",
     "places",
     "events",
+    "weekly_terms",
+    "activities",
+    "family_lore",
     "inside_jokes",
     "books",
     "news_items",
 )
+DERIVED_STOPWORDS = {
+    "AND",
+    "ARE",
+    "BOOK",
+    "FOR",
+    "FROM",
+    "HAS",
+    "HER",
+    "HIS",
+    "INTO",
+    "ITS",
+    "MORE",
+    "NOT",
+    "OF",
+    "ON",
+    "OR",
+    "THE",
+    "THIS",
+    "TO",
+    "WITH",
+}
 
 
 def clean_answer(value: str) -> str:
@@ -58,6 +82,13 @@ def normalize_candidates(
             candidate, reason = _candidate_from_item(item, category, min_length, max_length)
             if candidate is None:
                 rejected.append({"source": category, "answer": _raw_answer(item), "reason": reason})
+                long_parent, _ = _candidate_from_item(item, category, min_length, 10_000)
+                if long_parent is not None:
+                    for derived in _derived_candidates(item, category, long_parent, min_length, max_length):
+                        if derived.answer in seen:
+                            continue
+                        seen.add(derived.answer)
+                        candidates.append(derived)
                 continue
             if candidate.answer in seen:
                 rejected.append({"source": category, "answer": candidate.answer, "reason": "duplicate"})
@@ -136,7 +167,7 @@ def _derived_candidates(
     tokens = [clean_answer(token) for token in re.findall(r"[A-Za-z]+", raw)]
     derived: list[Candidate] = []
     for token in tokens:
-        if token == parent.answer or not (min_length <= len(token) <= max_length):
+        if token == parent.answer or token in DERIVED_STOPWORDS or not (min_length <= len(token) <= max_length):
             continue
         derived.append(
             Candidate(

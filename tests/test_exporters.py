@@ -5,7 +5,7 @@ import puz
 
 from family_crossword.clues import add_clues
 from family_crossword.exporters import write_outputs
-from family_crossword.model import Candidate
+from family_crossword.model import Candidate, Entry, FilledPuzzle
 from family_crossword.solver import fill_pattern
 
 
@@ -63,3 +63,28 @@ def test_puz_export_sanitizes_unicode_text(tmp_path) -> None:
     loaded_puz = puz.read(str(tmp_path / "puzzle.puz"))
     assert loaded_puz.title == "Export Test - ok"
     assert loaded_puz.clues[0] == 'Curly "quote" - dash'
+
+
+def test_family_hint_overrides_generic_lookup_clue() -> None:
+    puzzle = FilledPuzzle(
+        size=4,
+        grid=[list("NICO"), list("####"), list("####"), list("####")],
+        entries=[
+            Entry(
+                number=1,
+                row=0,
+                col=0,
+                direction="across",
+                answer="NICO",
+                clue="One-named singer",
+                source="people",
+                is_family=True,
+                clue_hint="The toddler who loves tools and songs",
+            )
+        ],
+        metadata={},
+    )
+
+    add_clues(puzzle, use_ai=False, preserve_existing=True)
+
+    assert puzzle.entries[0].clue == "The toddler who loves tools and songs"

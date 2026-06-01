@@ -141,9 +141,8 @@ def generate_with_crosserville(
                     )
                     if best is None or puzzle_selection_score(puzzle) > puzzle_selection_score(best):
                         best = puzzle
-                if best is not best_before_size:
-                    break
-                warnings.append(f"No complete Crosserville {size}x{size} puzzle found; shrinking.")
+                if best is best_before_size:
+                    warnings.append(f"No improved complete Crosserville {size}x{size} puzzle found; trying the next size.")
                 if time.monotonic() >= deadline:
                     break
         finally:
@@ -233,31 +232,53 @@ def _place_family_words(rows: list[str], candidates: list[Candidate], rng: rando
     for values in candidates_by_length.values():
         values.sort(key=lambda item: item.weight, reverse=True)
 
-    grid = [list(row) for row in rows]
     slot_order = slots[:]
     rng.shuffle(slot_order)
+    slot_order.sort(key=lambda slot: (len(candidates_by_length.get(slot.length, [])), -slot.length))
     max_placements = _family_placement_budget(attempt, candidates)
-    placed: list[str] = []
-    used_answers: set[str] = set()
+    grid = [list(row) for row in rows]
+    best_grid = [row[:] for row in grid]
+    best_placed: list[Candidate] = []
+    nodes = 0
 
-    for slot in slot_order:
-        if len(placed) >= max_placements:
-            break
+    def remember(placed: list[Candidate]) -> None:
+        nonlocal best_grid, best_placed
+        score = (len(placed), sum(candidate.weight for candidate in placed))
+        best_score = (len(best_placed), sum(candidate.weight for candidate in best_placed))
+        if score > best_score:
+            best_grid = [row[:] for row in grid]
+            best_placed = placed[:]
+
+    def search(slot_index: int, placed: list[Candidate], used_answers: set[str]) -> None:
+        nonlocal nodes
+        nodes += 1
+        remember(placed)
+        if nodes >= 1_200 or len(placed) >= max_placements or slot_index >= len(slot_order):
+            return
+        if len(placed) + len(slot_order) - slot_index <= len(best_placed):
+            return
+
+        slot = slot_order[slot_index]
         options = [
             candidate
             for candidate in candidates_by_length.get(slot.length, [])
             if candidate.answer not in used_answers and _word_fits_seeded_grid(grid, slot.cells, candidate.answer)
         ]
-        if not options:
-            continue
-        priority_options = options[: min(4, len(options))]
-        candidate = rng.choice(priority_options)
-        for index, (row, col) in enumerate(slot.cells):
-            grid[row][col] = candidate.answer[index]
-        placed.append(candidate.answer)
-        used_answers.add(candidate.answer)
+        options = options[: min(6, len(options))]
+        if len(options) > 1:
+            rng.shuffle(options)
+            options.sort(key=lambda candidate: candidate.weight, reverse=True)
+        for candidate in options:
+            changed = _seed_word(grid, slot.cells, candidate.answer)
+            used_answers.add(candidate.answer)
+            search(slot_index + 1, [*placed, candidate], used_answers)
+            used_answers.remove(candidate.answer)
+            for row, col in changed:
+                grid[row][col] = "."
+        search(slot_index + 1, placed, used_answers)
 
-    return ["".join(row) for row in grid], placed
+    search(0, [], set())
+    return ["".join(row) for row in best_grid], [candidate.answer for candidate in best_placed]
 
 
 def _family_placement_budget(attempt: int, candidates: list[Candidate]) -> int:
@@ -273,6 +294,15 @@ def _word_fits_seeded_grid(grid: list[list[str]], cells: tuple[tuple[int, int], 
         if cell not in (".", answer[index]):
             return False
     return True
+
+
+def _seed_word(grid: list[list[str]], cells: tuple[tuple[int, int], ...], answer: str) -> list[tuple[int, int]]:
+    changed: list[tuple[int, int]] = []
+    for index, (row, col) in enumerate(cells):
+        if grid[row][col] == ".":
+            changed.append((row, col))
+            grid[row][col] = answer[index]
+    return changed
 
 
 def _write_template_puz(rows: list[str], metadata: dict[str, Any]) -> str:

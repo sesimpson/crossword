@@ -135,9 +135,12 @@ def fill_pattern(
         )
 
     family_entries = [entry for entry in entries if entry.is_family]
+    weekly_entries = [entry for entry in family_entries if entry.source != "people"]
     score_report = {
         "family_count": len(family_entries),
         "family_score": sum(assignments[slot.id].weight for slot in slots if assignments[slot.id].is_family),
+        "weekly_count": len(weekly_entries),
+        "family_source_count": len({entry.source for entry in family_entries}),
         "entry_count": len(entries),
         "block_count": sum(1 for row in blocks for cell in row if cell),
         "search_nodes": nodes,
@@ -148,8 +151,10 @@ def fill_pattern(
 def puzzle_selection_score(puzzle: FilledPuzzle) -> float:
     family_score = float(puzzle.score_report.get("family_score", 0))
     family_count = float(puzzle.score_report.get("family_count", 0))
+    weekly_count = float(puzzle.score_report.get("weekly_count", 0))
+    family_source_count = float(puzzle.score_report.get("family_source_count", 0))
     density = family_count / max(1, float(puzzle.score_report.get("entry_count", 1)))
-    return family_score + family_count * 5_000 + density * 1_000 + puzzle.size * 2
+    return family_score + family_count * 5_000 + weekly_count * 1_000 + family_source_count * 250 + density * 1_000 + puzzle.size * 2
 
 
 def _choose_slot(

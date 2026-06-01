@@ -38,9 +38,12 @@ def puzzle_from_grid_rows(
         )
 
     family_entries = [entry for entry in entries if entry.is_family]
+    weekly_entries = [entry for entry in family_entries if entry.source != "people"]
     score_report = {
         "family_count": len(family_entries),
         "family_score": sum(family_by_answer[entry.answer].weight for entry in family_entries),
+        "weekly_count": len(weekly_entries),
+        "family_source_count": len({entry.source for entry in family_entries}),
         "entry_count": len(entries),
         "block_count": sum(1 for row in rows for cell in row if cell == BLOCK),
     }
