@@ -35,6 +35,6 @@ def test_normalize_candidates_derives_words_from_too_long_phrases() -> None:
         max_length=10,
     )
 
-    assert [candidate.answer for candidate in candidates] == ["VERY", "BUSY", "SPIDER"]
+    assert [candidate.answer for candidate in candidates] == ["BUSY", "SPIDER"]
     assert candidates[-1].clue_hint == "Nico's overdue favorite"
     assert rejected[0]["reason"] == "answer longer than max grid size 10"

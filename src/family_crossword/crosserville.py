@@ -20,7 +20,8 @@ from .solver import puzzle_selection_score
 CROSSERVILLE_HOME_URL = "https://www.crosserville.com/"
 CROSSERVILLE_SIGN_IN_URL = "https://www.crosserville.com/user/signIn"
 CROSSERVILLE_BUILDER_URL = "https://www.crosserville.com/builder"
-MAX_FILL_SECONDS_PER_PLACEMENT = 15.0
+DEFAULT_FILL_SECONDS = 15.0
+DENSE_FILL_SECONDS = 35.0
 
 
 @dataclass
@@ -32,6 +33,7 @@ class CrosservilleAttempt:
     rows: list[str]
     clues: dict[tuple[int, str], str] | None = None
     error: str = ""
+    pattern_source: str = ""
 
 
 def generate_with_crosserville_from_file(
@@ -103,6 +105,13 @@ def generate_with_crosserville(
         browser_context = browser.new_context(accept_downloads=True, viewport={"width": 1600, "height": 1000})
         try:
             _ensure_crosserville_session(browser_context)
+            crosserville_templates = _fetch_crosserville_templates(browser_context, sizes)
+            crosserville_templates = {
+                size: _rank_crosserville_templates(rows, family_candidates)
+                for size, rows in crosserville_templates.items()
+            }
+            if 15 in sizes and not crosserville_templates.get(15):
+                warnings.append("Crosserville template catalog was unavailable; using built-in and generated patterns.")
             for size_index, size in enumerate(sizes):
                 remaining_sizes = len(sizes) - size_index
                 size_deadline = min(deadline, time.monotonic() + max(20.0, (deadline - time.monotonic()) / remaining_sizes))
@@ -119,6 +128,7 @@ def generate_with_crosserville(
                         rng=rng,
                         metadata=metadata,
                         deadline=size_deadline,
+                        crosserville_templates=crosserville_templates.get(size, []),
                     )
                     attempt_reports.append(
                         {
@@ -127,6 +137,7 @@ def generate_with_crosserville(
                             "placed_words": result.placed_words,
                             "blanks": result.blanks,
                             "error": result.error,
+                            "pattern_source": result.pattern_source,
                         }
                     )
                     if result.error or result.blanks:
@@ -166,6 +177,7 @@ def generate_with_crosserville(
         "score_report": best.score_report,
         "family_entries": [entry.answer for entry in best.family_entries],
         "crosserville_attempts": attempt_reports,
+        "crosserville_template_counts": {str(size): len(rows) for size, rows in crosserville_templates.items()},
     }
     return best, report
 
@@ -179,24 +191,26 @@ def _run_crosserville_attempt(
     rng: random.Random,
     metadata: dict[str, Any],
     deadline: float,
+    crosserville_templates: list[list[str]] | None = None,
 ) -> CrosservilleAttempt:
     page = browser_context.new_page()
     template_path = ""
     placed_words: list[str] = []
     try:
-        rows = _template_rows(size, rng, attempt, candidates)
+        rows, pattern_source = _template_rows(size, rng, attempt, candidates, crosserville_templates)
         seeded_rows, placed_words = _place_family_words(rows, candidates, rng, attempt)
         template_path = _write_template_puz(seeded_rows, metadata)
         page.goto(CROSSERVILLE_BUILDER_URL, wait_until="load", timeout=60_000)
         _import_template(page, template_path)
-        _run_crosserville_fill(page, min(deadline, time.monotonic() + MAX_FILL_SECONDS_PER_PLACEMENT))
+        fill_seconds = _fill_seconds(placed_words)
+        _run_crosserville_fill(page, min(deadline, time.monotonic() + fill_seconds))
         final_rows, clues = _export_puz(page)
         crosserville_clues = _scrape_lookup_clues(page, final_rows)
         crosserville_clues.update({key: value for key, value in _scrape_visible_clues(page, final_rows).items() if value})
         clues.update({key: value for key, value in crosserville_clues.items() if value})
-        return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=sum(row.count(".") for row in final_rows), rows=final_rows, clues=clues)
+        return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=sum(row.count(".") for row in final_rows), rows=final_rows, clues=clues, pattern_source=pattern_source)
     except Exception as exc:
-        return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=size * size, rows=[], error=str(exc))
+        return CrosservilleAttempt(size=size, attempt=attempt, placed_words=placed_words, blanks=size * size, rows=[], error=str(exc), pattern_source=pattern_source if "pattern_source" in locals() else "")
     finally:
         page.close()
         if template_path:
@@ -212,15 +226,70 @@ def _eligible_family_candidates(candidates: list[Candidate], size: int, rng: ran
     return priority + rest[:18]
 
 
-def _template_rows(size: int, rng: random.Random, attempt: int, candidates: list[Candidate]) -> list[str]:
+def _template_rows(
+    size: int,
+    rng: random.Random,
+    attempt: int,
+    candidates: list[Candidate],
+    crosserville_templates: list[list[str]] | None = None,
+) -> tuple[list[str], str]:
+    if crosserville_templates and attempt % 3 != 2:
+        rank = attempt % len(crosserville_templates)
+        return crosserville_templates[rank], f"crosserville-template-rank-{rank + 1}"
     if attempt % 7 == 6:
-        return ["." * size for _ in range(size)]
+        return ["." * size for _ in range(size)], "open-grid"
     target_lengths = [len(candidate.answer) for candidate in candidates]
     for offset in range(40):
         blocks = generate_pattern(size, rng, attempt + offset, target_lengths=target_lengths)
         if is_valid_pattern(blocks):
-            return ["".join(BLOCK if cell else "." for cell in row) for row in blocks]
-    return ["." * size for _ in range(size)]
+            return ["".join(BLOCK if cell else "." for cell in row) for row in blocks], "generated-pattern"
+    return ["." * size for _ in range(size)], "open-grid-fallback"
+
+
+def _family_template_score(rows: list[str], candidates: list[Candidate]) -> tuple[int, int, int]:
+    slots_by_length: dict[int, int] = {}
+    blocks = [[cell == BLOCK for cell in row] for row in rows]
+    for slot in find_slots(blocks):
+        slots_by_length[slot.length] = slots_by_length.get(slot.length, 0) + 1
+
+    candidate_lengths: dict[int, int] = {}
+    for candidate in candidates:
+        candidate_lengths[len(candidate.answer)] = candidate_lengths.get(len(candidate.answer), 0) + 1
+
+    usable_slots = sum(min(slot_count, candidate_lengths.get(length, 0)) for length, slot_count in slots_by_length.items())
+    weighted_slots = sum(
+        min(slot_count, candidate_lengths.get(length, 0)) * length
+        for length, slot_count in slots_by_length.items()
+    )
+    return usable_slots, weighted_slots, -sum(row.count(BLOCK) for row in rows)
+
+
+def _rank_crosserville_templates(templates: list[list[str]], candidates: list[Candidate]) -> list[list[str]]:
+    by_answer = {candidate.answer: candidate for candidate in candidates}
+
+    def score(index_and_rows: tuple[int, list[str]]) -> tuple[int, int, int, int, tuple[int, int, int]]:
+        index, rows = index_and_rows
+        _, placed = _place_family_words(rows, candidates, random.Random(index + 1), attempt=0)
+        matched = [by_answer[answer] for answer in placed]
+        return (
+            len(matched),
+            sum(candidate.source != "people" for candidate in matched),
+            len({candidate.source for candidate in matched}),
+            sum(candidate.weight for candidate in matched),
+            _family_template_score(rows, candidates),
+        )
+
+    ranked = sorted(enumerate(templates), key=score, reverse=True)
+    return [rows for _, rows in ranked]
+
+
+def _fill_seconds(placed_words: list[str]) -> float:
+    variable = "CROSSWORD_DENSE_FILL_SECONDS" if len(placed_words) >= 5 else "CROSSWORD_FILL_SECONDS"
+    fallback = DENSE_FILL_SECONDS if len(placed_words) >= 5 else DEFAULT_FILL_SECONDS
+    try:
+        return max(1.0, float(os.getenv(variable, str(fallback))))
+    except ValueError:
+        return fallback
 
 
 def _place_family_words(rows: list[str], candidates: list[Candidate], rng: random.Random, attempt: int) -> tuple[list[str], list[str]]:
@@ -284,7 +353,7 @@ def _place_family_words(rows: list[str], candidates: list[Candidate], rng: rando
 def _family_placement_budget(attempt: int, candidates: list[Candidate]) -> int:
     if not candidates:
         return 0
-    budgets = (8, 6, 5, 4, 3, 2, 1)
+    budgets = (12, 10, 8, 7, 6, 5, 4, 3, 2, 1)
     return min(len(candidates), budgets[attempt % len(budgets)])
 
 
@@ -366,6 +435,49 @@ def _ensure_crosserville_session(browser_context: Any) -> None:
             raise RuntimeError("Crosserville sign-in succeeded, but Grid Builder was not available.")
     finally:
         page.close()
+
+
+def _fetch_crosserville_templates(browser_context: Any, sizes: list[int]) -> dict[int, list[list[str]]]:
+    page = browser_context.new_page()
+    try:
+        page.goto(CROSSERVILLE_BUILDER_URL, wait_until="load", timeout=60_000)
+        raw_templates = page.evaluate(
+            """async sizes => {
+                const wanted = new Set(sizes);
+                const listResponse = await fetch('/api/gridTemplates', {credentials: 'include'});
+                if (!listResponse.ok) return [];
+                const templates = (await listResponse.json())
+                  .filter(template => template.nrows === template.ncols && wanted.has(template.nrows));
+                return await Promise.all(templates.map(async template => {
+                  const response = await fetch(`/api/gridTemplate/${template.id}`, {credentials: 'include'});
+                  if (!response.ok) return null;
+                  const detail = await response.json();
+                  return {size: detail.nrows, grid: JSON.parse(detail.empty_grid)};
+                }));
+            }""",
+            sizes,
+        )
+    except Exception:
+        return {}
+    finally:
+        page.close()
+
+    grouped: dict[int, list[list[str]]] = {}
+    for template in raw_templates or []:
+        if not isinstance(template, dict):
+            continue
+        size = template.get("size")
+        cells = template.get("grid")
+        if not isinstance(size, int) or not isinstance(cells, list) or len(cells) != size * size:
+            continue
+        rows = [
+            "".join(BLOCK if cell == "." else "." for cell in cells[row * size : (row + 1) * size])
+            for row in range(size)
+        ]
+        blocks = [[cell == BLOCK for cell in row] for row in rows]
+        if is_valid_pattern(blocks):
+            grouped.setdefault(size, []).append(rows)
+    return grouped
 
 
 def _import_template(page: Any, template_path: str) -> None:
