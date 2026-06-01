@@ -7,6 +7,7 @@ from family_crossword.crosserville import (
     _current_visible_clue,
     _fill_seconds,
     _family_template_score,
+    _family_placement_budget,
     _numbered_slots,
     _place_family_words,
     _template_rows,
@@ -107,3 +108,13 @@ def test_template_rows_rotates_ranked_crosserville_patterns() -> None:
     assert rows_0 != rows_1
     assert source_0 == "crosserville-template-rank-1"
     assert source_1 == "crosserville-template-rank-2"
+
+
+def test_family_placement_budget_repeats_practical_density_searches() -> None:
+    candidates = [Candidate(f"WORD{index}", is_family=True) for index in range(20)]
+
+    budgets = [_family_placement_budget(attempt, candidates) for attempt in range(16)]
+
+    assert budgets[:4] == [8, 7, 6, 6]
+    assert budgets.count(5) == 3
+    assert budgets.count(4) == 3

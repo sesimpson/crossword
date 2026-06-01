@@ -5,6 +5,7 @@ import random
 import re
 import tempfile
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -176,6 +177,8 @@ def generate_with_crosserville(
         "rejected_candidates": rejected_candidates or [],
         "score_report": best.score_report,
         "family_entries": [entry.answer for entry in best.family_entries],
+        "family_candidate_count": len(family_candidates),
+        "family_candidate_source_counts": dict(Counter(candidate.source for candidate in family_candidates)),
         "crosserville_attempts": attempt_reports,
         "crosserville_template_counts": {str(size): len(rows) for size, rows in crosserville_templates.items()},
     }
@@ -333,10 +336,9 @@ def _place_family_words(rows: list[str], candidates: list[Candidate], rng: rando
             for candidate in candidates_by_length.get(slot.length, [])
             if candidate.answer not in used_answers and _word_fits_seeded_grid(grid, slot.cells, candidate.answer)
         ]
+        rng.shuffle(options)
+        options.sort(key=lambda candidate: candidate.weight + rng.randrange(0, 1_501), reverse=True)
         options = options[: min(6, len(options))]
-        if len(options) > 1:
-            rng.shuffle(options)
-            options.sort(key=lambda candidate: candidate.weight, reverse=True)
         for candidate in options:
             changed = _seed_word(grid, slot.cells, candidate.answer)
             used_answers.add(candidate.answer)
@@ -353,7 +355,7 @@ def _place_family_words(rows: list[str], candidates: list[Candidate], rng: rando
 def _family_placement_budget(attempt: int, candidates: list[Candidate]) -> int:
     if not candidates:
         return 0
-    budgets = (12, 10, 8, 7, 6, 5, 4, 3, 2, 1)
+    budgets = (8, 7, 6, 6, 5, 5, 4, 4, 3, 3, 2, 2, 8, 6, 5, 4)
     return min(len(candidates), budgets[attempt % len(budgets)])
 
 
