@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> None:
     generate.add_argument("--attempts", type=int, default=2000, help="Total search attempts split across sizes.")
     generate.add_argument("--timeout-minutes", type=float, default=20, help="Maximum generation time.")
     generate.add_argument("--seed", type=int, default=None, help="Optional deterministic random seed.")
-    generate.add_argument("--model", default=os.getenv("OPENAI_MODEL"), help="OpenAI model for clue generation.")
+    generate.add_argument("--model", default=os.getenv("OPENAI_MODEL") or "gpt-4.1-mini", help="OpenAI model for clue generation.")
     generate.add_argument("--no-ai-clues", action="store_true", help="Use deterministic fallback clues only.")
     generate.add_argument("--backend", choices=["local", "crosserville"], default="local", help="Generation backend.")
     generate.add_argument("--show-browser", action="store_true", help="Show the Crosserville browser while generating.")
